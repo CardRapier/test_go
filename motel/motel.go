@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cardrapier/hello-fiber/database"
+	"github.com/cardrapier/hello-fiber/models"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -19,8 +20,13 @@ func SetupRoutes(app *fiber.App) {
 }
 
 type Pagination struct {
-	Page int8   `query:"page" default:"1"`
+	Page uint16 `query:"page" default:"1"`
 	Name string `query:"name"`
+}
+
+func (pg *Pagination) Init() *Pagination {
+	pg.Page = 1
+	return pg
 }
 
 func createMotel(c *fiber.Ctx) error {
@@ -42,22 +48,36 @@ func createMotel(c *fiber.Ctx) error {
 }
 
 func getMotels(c *fiber.Ctx) error {
-	p := new(Pagination)
+	p := new(Pagination).Init()
 
 	if err := c.QueryParser(p); err != nil {
 		return err
 	}
 	fmt.Print(p)
-	// total := getCount(c, p.Name)
+	total := getCount(c, p.Name)
+	pages := uint16(total / models.Limit)
+	if pages == 0 {
+		pages = 1
+	}
+
+	// Aggregations
+	room_name := bson.D{
+		{Key: "$match", Value: bson.D{
+			{Key: "name", Value: bson.M{
+				"$regex": p.Name,
+			}},
+		}},
+	}
+	skip_value := (p.Page - 1) * models.Limit
+	skip := bson.D{{Key: "$skip", Value: skip_value}}
+	limit := bson.D{{Key: "$limit", Value: models.Limit}}
 	room_lookup := bson.D{
 		{Key: "$lookup", Value: bson.D{
 			{Key: "from", Value: "rooms"}, {Key: "localField", Value: "rooms"},
 			{Key: "foreignField", Value: "_id"}, {Key: "as", Value: "rooms"},
 		}},
 	}
-	// skip := bson.D{{Key: "$skip", Value: 0}}
-	// limit := bson.D{{Key: "$limit", Value: 20}}
-	cursor, err := motelCol.Aggregate(c.Context(), mongo.Pipeline{room_lookup})
+	cursor, err := motelCol.Aggregate(c.Context(), mongo.Pipeline{room_name, skip, limit, room_lookup})
 	if err != nil {
 		return c.Status(fiber.ErrInternalServerError.Code).SendString(err.Error())
 	}
@@ -69,17 +89,24 @@ func getMotels(c *fiber.Ctx) error {
 		motels = append(motels, motel)
 	}
 
-	// count := len(motels)
+	count := uint16(len(motels))
+	data := models.PaginationResult[Motel]{
+		Total:   total,
+		Count:   count,
+		Page:    p.Page,
+		Pages:   pages,
+		Results: motels,
+	}
 
-	return c.Status(fiber.StatusCreated).JSON(motels)
+	return c.Status(fiber.StatusCreated).JSON(data)
 }
 
-func getCount(c *fiber.Ctx, name string) int64 {
+func getCount(c *fiber.Ctx, name string) uint16 {
 	filter := bson.D{{Key: "name", Value: bson.D{{Key: "$regex", Value: name}}}}
 	count, err := motelCol.CountDocuments(c.Context(), filter)
 	if err != nil {
 		fmt.Println("Error fetching count")
 		return 0
 	}
-	return count
+	return uint16(count)
 }

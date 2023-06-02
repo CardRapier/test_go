@@ -30,7 +30,7 @@ func (cfw *DBWorker) start() {
 }
 
 func RunDB() {
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://root:1234@localhost:27017"))
+	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://root:mongolin@localhost:27017"))
 	if err != nil {
 		panic(err)
 	}
