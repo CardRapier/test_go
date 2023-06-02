@@ -1,0 +1,10 @@
+version: '3.4'
+services:
+  mongo-go:
+    image: mongo
+    restart: always
+    environment:
+        - "MONGO_INITDB_ROOT_USERNAME=$MONGO_USER"
+        - "MONGO_INITDB_ROOT_PASSWORD=$MONGO_PASS"
+    ports:
+      - "27018:27018"
